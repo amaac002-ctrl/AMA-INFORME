@@ -300,6 +300,20 @@ app.get("/api/submissions-dynamic", (req, res) => {
     }
 });
 
+app.delete("/api/submissions", (req, res) => {
+    try {
+        const { password } = req.body;
+        const config = db.prepare("SELECT value FROM config WHERE key = 'admin_password'").get() as any;
+        if (password !== config.value) {
+            return res.status(401).json({ success: false, message: "Contraseña incorrecta" });
+        }
+        db.prepare("DELETE FROM submissions").run();
+        res.json({ success: true });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 app.delete("/api/submissions/:id", (req, res) => {
     try {
         db.prepare("DELETE FROM submissions WHERE id = ?").run(req.params.id);

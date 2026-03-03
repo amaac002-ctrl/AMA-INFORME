@@ -112,6 +112,32 @@ export default function Admin({ user }: AdminProps) {
     } catch (e) { }
   };
 
+  const handleDeleteAllSubmissions = async () => {
+    if (!window.confirm('¿ESTÁS ABSOLUTAMENTE SEGURO? Esta acción borrará TODOS los informes de todos los agentes permanentemente.')) return;
+
+    const password = window.prompt('Introduce la contraseña de administrador para confirmar el borrado MASIVO:');
+    if (!password) return;
+
+    try {
+      const res = await fetch('/api/submissions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+
+      if (res.ok) {
+        setAllSubmissions([]);
+        alert('Todos los informes han sido eliminados.');
+      } else {
+        const error = await res.json();
+        alert('Error: ' + (error.message || 'No se pudo realizar la acción'));
+      }
+    } catch (e) {
+      console.error('Error deleting all submissions:', e);
+      alert('Error de red');
+    }
+  };
+
   const handleDeleteSubmission = async (id: number) => {
     if (!window.confirm('¿Estás seguro de que deseas eliminar este informe permanentemente?')) return;
     try {
@@ -373,7 +399,16 @@ export default function Admin({ user }: AdminProps) {
 
       {activeTab === 'reports' ? (
         <div className="bg-white p-10 rounded-[3rem] border border-black/5 shadow-sm overflow-hidden">
-          <h2 className="text-2xl font-black mb-8 tracking-tight">Todos los Informes Registrados</h2>
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-black tracking-tight">Todos los Informes Registrados</h2>
+            <button
+              onClick={handleDeleteAllSubmissions}
+              className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100"
+            >
+              <Trash2 size={14} />
+              Borrar Todo
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
