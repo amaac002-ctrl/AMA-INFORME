@@ -145,20 +145,26 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
     if (!fields || fields.length === 0) return content;
 
     fields.forEach(field => {
+      if (!field?.label) return;
       const value = formData[field.field_id] || `[${field.label}]`;
       // Escapa caracteres especiales de regex para evitar bloqueos si el label tiene () o []
       const escapedLabel = field.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
       // Soporta múltiples delimitadores: <label>, {label}, (label)
+      // Escapamos { y } porque son caracteres especiales en regex (cuantificadores)
       const regexPatterns = [
         `<${escapedLabel}>`,
-        `{${escapedLabel}}`,
+        `\\{${escapedLabel}\\}`,
         `\\(${escapedLabel}\\)`
       ];
 
       regexPatterns.forEach(pattern => {
-        const regex = new RegExp(pattern, 'gi');
-        content = content.replace(regex, value);
+        try {
+          const regex = new RegExp(pattern, 'gi');
+          content = content.replace(regex, value);
+        } catch (e) {
+          console.error("Error en regex para campo:", field.label, e);
+        }
       });
     });
     return content;
