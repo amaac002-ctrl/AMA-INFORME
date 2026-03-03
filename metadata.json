@@ -1,0 +1,9 @@
+{
+  "name": "HALLAZGO DE CEBOS O ANIMALES ENVENENADOS",
+  "description": "Collect data, generate Word documents, send them via email, and track analytics in a dashboard.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ]
+}
