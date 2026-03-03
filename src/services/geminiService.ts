@@ -1,9 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getAI = () => {
+  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (process.env as any).GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn("ADVERTENCIA: No se ha configurado la clave GEMINI_API_KEY. Las funciones de IA estarán desactivadas.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+const ai = getAI();
 
 export async function improveText(text: string): Promise<string> {
-  if (!text.trim()) return text;
+  if (!text.trim() || !ai) return text;
 
   try {
     const response = await ai.models.generateContent({
@@ -28,6 +37,7 @@ export async function improveText(text: string): Promise<string> {
 }
 
 export async function askAi(question: string, context: string): Promise<string> {
+  if (!ai) return "IA no configurada.";
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
@@ -42,6 +52,7 @@ export async function askAi(question: string, context: string): Promise<string> 
 }
 
 export async function analyzeImage(base64Image: string): Promise<any> {
+  if (!ai) return {};
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
