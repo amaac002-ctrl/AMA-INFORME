@@ -141,11 +141,25 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
   };
 
   const getFilledTemplate = () => {
-    let content = template.content || '';
+    let content = template?.content || '';
+    if (!fields || fields.length === 0) return content;
+
     fields.forEach(field => {
       const value = formData[field.field_id] || `[${field.label}]`;
-      const regex = new RegExp(`<${field.label}>`, 'gi');
-      content = content.replace(regex, value);
+      // Escapa caracteres especiales de regex para evitar bloqueos si el label tiene () o []
+      const escapedLabel = field.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Soporta múltiples delimitadores: <label>, {label}, (label)
+      const regexPatterns = [
+        `<${escapedLabel}>`,
+        `{${escapedLabel}}`,
+        `\\(${escapedLabel}\\)`
+      ];
+
+      regexPatterns.forEach(pattern => {
+        const regex = new RegExp(pattern, 'gi');
+        content = content.replace(regex, value);
+      });
     });
     return content;
   };

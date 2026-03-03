@@ -1088,8 +1088,12 @@ export default function Admin({ user }: AdminProps) {
                     {(() => {
                       let content = newTemplate.content || '';
                       newTemplate.fields.forEach(field => {
-                        const regex = new RegExp(`<${field.label}>`, 'gi');
-                        content = content.replace(regex, `[${field.label.toUpperCase()}]`);
+                        const escapedLabel = field.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const patterns = [`<${escapedLabel}>`, `{${escapedLabel}}`, `\\(${escapedLabel}\\)`];
+                        patterns.forEach(pattern => {
+                          const regex = new RegExp(pattern, 'gi');
+                          content = content.replace(regex, `[${field.label.toUpperCase()}]`);
+                        });
                       });
                       return content;
                     })()}
