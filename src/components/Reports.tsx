@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { getJSON } from '../lib/api';
 import {
   FileText, Search, Loader2, Clock, Tag, ArrowRight,
   AlertTriangle, Scale, Flame, Bird, Leaf, Droplets,
@@ -68,9 +69,7 @@ export default function Reports({ onSelectTemplate }: ReportsProps) {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
-      const data = await response.json();
-      setTemplates(data);
+      setTemplates(await getJSON('/api/templates'));
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
