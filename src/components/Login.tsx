@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { setToken } from '../lib/auth';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -28,6 +29,7 @@ export default function Login({ onLogin }: LoginProps) {
       if (!response.ok) {
         setError(data.error || data.message || 'Error al iniciar sesión');
       } else {
+        setToken(data.token);
         onLogin(data.user);
       }
     } catch (err) {

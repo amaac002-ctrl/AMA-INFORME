@@ -24,6 +24,7 @@ import {
   Camera,
   List
 } from 'lucide-react';
+import { authHeaders } from '../lib/auth';
 
 interface AdminProps {
   user: any;
@@ -67,7 +68,7 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('/api/audit');
+      const res = await fetch('/api/audit', { headers: authHeaders() });
       const data = await res.json();
       setAuditLogs(data);
     } catch (e) { }
@@ -75,7 +76,7 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/users', { headers: authHeaders() });
       const data = await res.json();
       setUsersList(data);
     } catch (e) { }
@@ -86,7 +87,7 @@ export default function Admin({ user }: AdminProps) {
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(newUser)
       });
       if (res.ok) {
@@ -99,7 +100,7 @@ export default function Admin({ user }: AdminProps) {
   const handleDeleteUser = async (id: number) => {
     if (!confirm('¿Eliminar este usuario?')) return;
     try {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      await fetch(`/api/users/${id}`, { method: 'DELETE', headers: authHeaders() });
       fetchUsers();
     } catch (e) { }
   };
@@ -197,7 +198,7 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchErrorLogs = async () => {
     try {
-      const res = await fetch('/api/error-logs');
+      const res = await fetch('/api/error-logs', { headers: authHeaders() });
       const data = await res.json();
       setErrorLogs(data);
     } catch (e) { }
@@ -207,7 +208,7 @@ export default function Admin({ user }: AdminProps) {
     try {
       const res = await fetch('/api/system/fix', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ issueId })
       });
       if (res.ok) {
@@ -283,7 +284,7 @@ export default function Admin({ user }: AdminProps) {
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(newTemplate),
       });
 
@@ -340,7 +341,7 @@ export default function Admin({ user }: AdminProps) {
     try {
       const response = await fetch(`/api/templates/${id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ password }),
       });
 
