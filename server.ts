@@ -136,18 +136,34 @@ async function generateWordDoc(data: any, photos: string[] | null) {
 
 // API Routes
 app.get("/api/templates", (req, res) => {
-  const templates = db.prepare("SELECT * FROM templates").all();
-  res.json(templates);
+  try {
+    const templates = db.prepare("SELECT * FROM templates").all();
+    res.json(templates);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/api/login", (req, res) => {
-  const { email, password } = req.body;
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
-  if (user) {
-    res.json({ success: true, user: { email: user.email, role: user.role } });
-  } else {
-    res.status(401).json({ success: false, message: "Credenciales inválidas" });
+  try {
+    const { email, password } = req.body;
+    const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
+    if (user) {
+      res.json({ success: true, user: { email: user.email, role: user.role } });
+    } else {
+      res.status(401).json({ success: false, message: "Credenciales inválidas" });
+    }
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
   }
+});
+
+// Global error handler: ensures errors thrown by route handlers are logged and
+// returned as JSON instead of leaving the request hanging.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled server error:', err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: err?.message || 'Error interno del servidor' });
 });
 
 // Final handler to serve frontend

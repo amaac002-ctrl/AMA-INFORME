@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import mammoth from 'mammoth';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { fetchJson, errorMessage } from '../lib/api';
 import {
   Plus,
   Upload,
@@ -67,49 +68,56 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('/api/audit');
-      const data = await res.json();
-      setAuditLogs(data);
-    } catch (e) { }
+      const data = await fetchJson<any[]>('/api/audit');
+      setAuditLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error fetching audit logs:', e);
+    }
   };
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
-      const data = await res.json();
-      setUsersList(data);
-    } catch (e) { }
+      const data = await fetchJson<any[]>('/api/users');
+      setUsersList(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error fetching users:', e);
+    }
   };
 
   const handleCreateUser = async () => {
     if (!newUser.email || !newUser.password) return alert('Email y contraseña obligatorios');
     try {
-      const res = await fetch('/api/users', {
+      await fetchJson('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
       });
-      if (res.ok) {
-        setNewUser({ email: '', password: '', role: 'agente' });
-        fetchUsers();
-      }
-    } catch (e) { }
+      setNewUser({ email: '', password: '', role: 'agente' });
+      fetchUsers();
+    } catch (e) {
+      console.error('Error creating user:', e);
+      alert('Error al crear el usuario: ' + errorMessage(e));
+    }
   };
 
   const handleDeleteUser = async (id: number) => {
     if (!confirm('¿Eliminar este usuario?')) return;
     try {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      await fetchJson(`/api/users/${id}`, { method: 'DELETE' });
       fetchUsers();
-    } catch (e) { }
+    } catch (e) {
+      console.error('Error deleting user:', e);
+      alert('Error al eliminar el usuario: ' + errorMessage(e));
+    }
   };
 
   const fetchAllSubmissions = async () => {
     try {
-      const res = await fetch('/api/submissions-dynamic');
-      const data = await res.json();
-      setAllSubmissions(data);
-    } catch (e) { }
+      const data = await fetchJson<any[]>('/api/submissions-dynamic');
+      setAllSubmissions(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error fetching submissions:', e);
+    }
   };
 
   const handleDeleteAllSubmissions = async () => {
@@ -189,39 +197,41 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchSystemHealth = async () => {
     try {
-      const res = await fetch('/api/system/health');
-      const data = await res.json();
+      const data = await fetchJson('/api/system/health');
       setSystemHealth(data);
-    } catch (e) { }
+    } catch (e) {
+      console.error('Error fetching system health:', e);
+    }
   };
 
   const fetchErrorLogs = async () => {
     try {
-      const res = await fetch('/api/error-logs');
-      const data = await res.json();
-      setErrorLogs(data);
-    } catch (e) { }
+      const data = await fetchJson<any[]>('/api/error-logs');
+      setErrorLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error fetching error logs:', e);
+    }
   };
 
   const handleFixIssue = async (issueId: string) => {
     try {
-      const res = await fetch('/api/system/fix', {
+      await fetchJson('/api/system/fix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ issueId })
       });
-      if (res.ok) {
-        alert("Problema corregido.");
-        fetchSystemHealth();
-      }
-    } catch (e) { }
+      alert("Problema corregido.");
+      fetchSystemHealth();
+    } catch (e) {
+      console.error('Error fixing issue:', e);
+      alert('Error al corregir el problema: ' + errorMessage(e));
+    }
   };
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
-      const data = await response.json();
-      setTemplates(data);
+      const data = await fetchJson<any[]>('/api/templates');
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
