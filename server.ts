@@ -17,11 +17,26 @@ import {
 } from "docx";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
+
+const SESSION_SECRET =
+  process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12h
+
+function signToken(payload: { email: string; role: string; exp: number }): string {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(body)
+    .digest("base64url");
+  return `${body}.${sig}`;
+}
 
 const dbPath = process.env.VERCEL ? "/tmp/data.db" : "data.db";
 
@@ -142,9 +157,18 @@ app.get("/api/templates", (req, res) => {
 
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body;
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
-  if (user) {
-    res.json({ success: true, user: { email: user.email, role: user.role } });
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({ success: false, message: "Datos inválidos" });
+  }
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
+  const ok = user && bcrypt.compareSync(password, user.password ?? "");
+  if (ok) {
+    const token = signToken({
+      email: user.email,
+      role: user.role,
+      exp: Date.now() + SESSION_TTL_MS,
+    });
+    res.json({ success: true, user: { email: user.email, role: user.role }, token });
   } else {
     res.status(401).json({ success: false, message: "Credenciales inválidas" });
   }

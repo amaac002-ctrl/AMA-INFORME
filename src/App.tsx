@@ -11,6 +11,7 @@ import {
   Home as HomeIcon, ShieldCheck, Menu, X, Play
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { clearToken } from './lib/auth';
 
 export type View = 'home' | 'reports' | 'form' | 'dashboard' | 'admin' | 'login';
 
@@ -47,6 +48,7 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    clearToken();
     setView('login');
   };
 

@@ -21,11 +21,87 @@ import {
 } from "docx";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
+
+// ── Auth configuration ──
+// Secrets are sourced from the environment. Never hardcode credentials.
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const SESSION_SECRET =
+    process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12h
+
+if (!process.env.SESSION_SECRET) {
+    console.warn(
+        "ADVERTENCIA: SESSION_SECRET no configurado. Se usará un secreto efímero (los tokens se invalidan al reiniciar). Configúralo en producción."
+    );
+}
+
+interface TokenPayload {
+    email: string;
+    role: string;
+    exp: number;
+}
+
+function signToken(payload: TokenPayload): string {
+    const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = crypto
+        .createHmac("sha256", SESSION_SECRET)
+        .update(body)
+        .digest("base64url");
+    return `${body}.${sig}`;
+}
+
+function verifyToken(token: string | undefined): TokenPayload | null {
+    if (!token) return null;
+    const [body, sig] = token.split(".");
+    if (!body || !sig) return null;
+    const expected = crypto
+        .createHmac("sha256", SESSION_SECRET)
+        .update(body)
+        .digest("base64url");
+    const sigBuf = Buffer.from(sig);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return null;
+    }
+    try {
+        const payload = JSON.parse(
+            Buffer.from(body, "base64url").toString()
+        ) as TokenPayload;
+        if (!payload.exp || Date.now() > payload.exp) return null;
+        return payload;
+    } catch {
+        return null;
+    }
+}
+
+function getAuth(req: express.Request): TokenPayload | null {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    return verifyToken(token);
+}
+
+function requireAdmin(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) {
+    const auth = getAuth(req);
+    if (!auth) return res.status(401).json({ error: "No autorizado" });
+    if ((auth.role || "").toLowerCase() !== "admin") {
+        return res
+            .status(403)
+            .json({ error: "Requiere privilegios de administrador" });
+    }
+    next();
+}
 
 // Vercel specific: use /tmp for SQLite as it's the only writable directory
 // Note: This will NOT be persistent across restarts. We need a real DB for production.
@@ -132,7 +208,6 @@ const seedConfig = () => {
         transportes: ['MRW', 'SEUR', 'CORREOS', 'AGENTE PROPIO', 'OTRO'],
         suelos: ['Suelo Rústico de Protección Agraria', 'Suelo Rústico de Protección Paisajística', 'Suelo Rústico de Protección Natural', 'Suelo Rústico de Protección Cultural', 'Suelo Rústico de Protección de Infraestructuras', 'Suelo Urbano', 'Suelo Urbanizable'],
         espacios: ['NO', 'P.N. Caldera de Taburiente', 'P.N. Cumbre Vieja', 'P.N. de Las Nieves', 'R.N.I. del Pino de la Virgen', 'R.N.E. de la Laguna de Barlovento', 'M.N. de los Volcanes de Teneguía', 'M.N. de la Montaña de Azufre', 'P.P. de Tamanca', 'P.P. de El Remo', 'S.I.C. de las Salinas de Fuencaliente', 'OTRO'],
-        admin_password: 'Fran002',
     };
 
     const check = db.prepare("SELECT COUNT(*) as count FROM config").get() as any;
@@ -143,8 +218,25 @@ const seedConfig = () => {
         });
     }
 
-    db.prepare("DELETE FROM users WHERE email = 'Fran'").run();
-    db.prepare("INSERT INTO users (email, password, role) VALUES (?, ?, ?)").run('Fran', 'Fran002', 'admin');
+    // The admin password used to authorize destructive actions is sourced from
+    // the environment, never hardcoded. If unset, no admin_password is seeded.
+    if (ADMIN_PASSWORD) {
+        db.prepare(
+            "INSERT INTO config (key, value) VALUES ('admin_password', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run(ADMIN_PASSWORD);
+    }
+
+    // Seed the default admin user with a bcrypt-hashed password from the
+    // environment. Without ADMIN_PASSWORD configured, no admin is seeded.
+    if (ADMIN_PASSWORD) {
+        const hashed = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+        db.prepare("DELETE FROM users WHERE email = ?").run(ADMIN_EMAIL);
+        db.prepare("INSERT INTO users (email, password, role) VALUES (?, ?, ?)").run(
+            ADMIN_EMAIL,
+            hashed,
+            'admin'
+        );
+    }
 };
 seedConfig();
 
@@ -196,7 +288,7 @@ app.get("/api/templates/:id/config", (req, res) => {
     }
 });
 
-app.post("/api/templates", (req, res) => {
+app.post("/api/templates", requireAdmin, (req, res) => {
     try {
         const { name, content, type, header_image, original_doc, fields } = req.body;
         const info = db.prepare("INSERT INTO templates (name, content, type, header_image, original_doc) VALUES (?, ?, ?, ?, ?)").run(name, content, type, header_image, original_doc);
@@ -214,7 +306,7 @@ app.post("/api/templates", (req, res) => {
     }
 });
 
-app.put("/api/templates/:id", (req, res) => {
+app.put("/api/templates/:id", requireAdmin, (req, res) => {
     try {
         const { name, content, type, header_image, original_doc, fields } = req.body;
         db.prepare("UPDATE templates SET name = ?, content = ?, type = ?, header_image = ?, original_doc = ? WHERE id = ?").run(name, content, type, header_image, original_doc, req.params.id);
@@ -232,7 +324,7 @@ app.put("/api/templates/:id", (req, res) => {
     }
 });
 
-app.delete("/api/templates/:id", (req, res) => {
+app.delete("/api/templates/:id", requireAdmin, (req, res) => {
     try {
         const { password } = req.body;
         const config = db.prepare("SELECT value FROM config WHERE key = 'admin_password'").get() as any;
@@ -248,16 +340,27 @@ app.delete("/api/templates/:id", (req, res) => {
 
 app.post("/api/login", (req, res) => {
     const { email, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
-    if (user) {
+    if (typeof email !== "string" || typeof password !== "string") {
+        return res.status(400).json({ success: false, message: "Datos inválidos" });
+    }
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
+    const stored = user?.password ?? "";
+    // bcrypt.compareSync is safe against non-hash values (returns false).
+    const ok = user && bcrypt.compareSync(password, stored);
+    if (ok) {
         db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run(email, 'LOGIN', 'Inicio de sesión exitoso');
-        res.json({ success: true, user: { email: user.email, role: user.role } });
+        const token = signToken({
+            email: user.email,
+            role: user.role,
+            exp: Date.now() + SESSION_TTL_MS,
+        });
+        res.json({ success: true, user: { email: user.email, role: user.role }, token });
     } else {
         res.status(401).json({ success: false, message: "Credenciales inválidas" });
     }
 });
 
-app.get("/api/users", (req, res) => {
+app.get("/api/users", requireAdmin, (req, res) => {
     try {
         const users = db.prepare("SELECT id, email, role FROM users").all();
         res.json(users);
@@ -266,17 +369,22 @@ app.get("/api/users", (req, res) => {
     }
 });
 
-app.post("/api/users", (req, res) => {
+app.post("/api/users", requireAdmin, (req, res) => {
     try {
         const { email, password, role } = req.body;
-        db.prepare("INSERT INTO users (email, password, role) VALUES (?, ?, ?)").run(email, password, role);
+        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+            return res.status(400).json({ error: "Email y contraseña obligatorios" });
+        }
+        const safeRole = role === "admin" ? "admin" : "agente";
+        const hashed = bcrypt.hashSync(password, 10);
+        db.prepare("INSERT INTO users (email, password, role) VALUES (?, ?, ?)").run(email, hashed, safeRole);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.delete("/api/users/:id", (req, res) => {
+app.delete("/api/users/:id", requireAdmin, (req, res) => {
     try {
         db.prepare("DELETE FROM users WHERE id = ?").run(req.params.id);
         res.json({ success: true });
@@ -323,7 +431,7 @@ app.delete("/api/submissions/:id", (req, res) => {
     }
 });
 
-app.get("/api/audit", (req, res) => {
+app.get("/api/audit", requireAdmin, (req, res) => {
     try {
         const logs = db.prepare("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100").all();
         res.json(logs);
@@ -332,7 +440,7 @@ app.get("/api/audit", (req, res) => {
     }
 });
 
-app.get("/api/error-logs", (req, res) => {
+app.get("/api/error-logs", requireAdmin, (req, res) => {
     try {
         const logs = db.prepare("SELECT * FROM error_logs ORDER BY timestamp DESC LIMIT 50").all();
         res.json(logs);
@@ -361,7 +469,7 @@ app.post("/api/submit-dynamic", async (req, res) => {
     }
 });
 
-app.post("/api/system/fix", (req, res) => {
+app.post("/api/system/fix", requireAdmin, (req, res) => {
     const { issueId } = req.body;
     db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run('System', 'FIX', `Intento de corrección para issue ${issueId}`);
     res.json({ success: true });
