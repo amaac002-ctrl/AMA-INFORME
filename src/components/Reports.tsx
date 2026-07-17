@@ -6,6 +6,7 @@ import {
   Bug, Mountain, ShieldAlert, Syringe, Skull, Fish,
   FlaskConical, TreePine, Wind, Trash2
 } from 'lucide-react';
+import { fetchJson } from '../lib/api';
 
 interface ReportsProps {
   onSelectTemplate: (template: any) => void;
@@ -68,9 +69,8 @@ export default function Reports({ onSelectTemplate }: ReportsProps) {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
-      const data = await response.json();
-      setTemplates(data);
+      const data = await fetchJson<any[]>('/api/templates');
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {

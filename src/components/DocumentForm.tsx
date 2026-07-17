@@ -30,6 +30,7 @@ import {
   Upload
 } from 'lucide-react';
 import { improveText, askAi, analyzeImage } from '../services/geminiService';
+import { fetchJson, errorMessage } from '../lib/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import SignatureCanvas from 'react-signature-canvas';
@@ -202,8 +203,8 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`/api/templates/${template.id}/config`);
-      const data = await res.json();
+      const raw = await fetchJson<any[]>(`/api/templates/${template.id}/config`);
+      const data = Array.isArray(raw) ? raw : [];
       setFields(data);
 
       // Initialize formData if empty
@@ -389,16 +390,15 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
         modulo: template.name.toLowerCase(),
         status: 'borrador'
       };
-      const res = await fetch('/api/submit-dynamic', {
+      await fetchJson('/api/submit-dynamic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submission)
       });
-      if (res.ok) {
-        alert("Borrador guardado correctamente.");
-      }
+      alert("Borrador guardado correctamente.");
     } catch (error) {
-      alert("Error al guardar borrador.");
+      console.error('Error saving draft:', error);
+      alert("Error al guardar borrador: " + errorMessage(error));
     } finally {
       setIsDraftSaving(false);
     }
@@ -481,17 +481,16 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
     };
 
     try {
-      const res = await fetch('/api/submit-dynamic', {
+      await fetchJson('/api/submit-dynamic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submission)
       });
-      if (res.ok) {
-        setSuccess(true);
-        localStorage.removeItem(`draft_${template.id}`);
-        setTimeout(() => onBack(), 2000);
-      }
+      setSuccess(true);
+      localStorage.removeItem(`draft_${template.id}`);
+      setTimeout(() => onBack(), 2000);
     } catch (error) {
+      console.error('Error finalizing submission:', error);
       alert("Error al enviar. El informe se ha guardado como borrador local.");
     } finally {
       setLoading(false);

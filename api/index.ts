@@ -113,14 +113,28 @@ db.exec(`
 `);
 
 // Migrations
-try { db.prepare("ALTER TABLE submissions ADD COLUMN sent_at DATETIME").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE submissions ADD COLUMN expedient_number TEXT").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE submissions ADD COLUMN signature_metadata TEXT").run(); } catch (e) { }
-try { db.prepare("UPDATE submissions SET status = 'borrador' WHERE status IS NULL OR status = 'finalizado'").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE form_configs ADD COLUMN help_text TEXT").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE form_configs ADD COLUMN validation TEXT").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE templates ADD COLUMN header_image TEXT").run(); } catch (e) { }
-try { db.prepare("ALTER TABLE templates ADD COLUMN original_doc TEXT").run(); } catch (e) { }
+// Run a migration statement, ignoring only the expected "column already exists"
+// error (migrations are re-run on every boot). Any other failure is a real
+// problem and must be surfaced rather than swallowed silently.
+const runMigration = (label: string, sql: string) => {
+    try {
+        db.prepare(sql).run();
+    } catch (e: any) {
+        if (typeof e?.message === 'string' && e.message.includes('duplicate column name')) {
+            return;
+        }
+        console.error(`Migration failed [${label}]:`, e);
+    }
+};
+
+runMigration('submissions.sent_at', "ALTER TABLE submissions ADD COLUMN sent_at DATETIME");
+runMigration('submissions.expedient_number', "ALTER TABLE submissions ADD COLUMN expedient_number TEXT");
+runMigration('submissions.signature_metadata', "ALTER TABLE submissions ADD COLUMN signature_metadata TEXT");
+runMigration('submissions.status_backfill', "UPDATE submissions SET status = 'borrador' WHERE status IS NULL OR status = 'finalizado'");
+runMigration('form_configs.help_text', "ALTER TABLE form_configs ADD COLUMN help_text TEXT");
+runMigration('form_configs.validation', "ALTER TABLE form_configs ADD COLUMN validation TEXT");
+runMigration('templates.header_image', "ALTER TABLE templates ADD COLUMN header_image TEXT");
+runMigration('templates.original_doc', "ALTER TABLE templates ADD COLUMN original_doc TEXT");
 
 // Seed default config and templates if empty
 const seedConfig = () => {
@@ -247,13 +261,17 @@ app.delete("/api/templates/:id", (req, res) => {
 });
 
 app.post("/api/login", (req, res) => {
-    const { email, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
-    if (user) {
-        db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run(email, 'LOGIN', 'Inicio de sesión exitoso');
-        res.json({ success: true, user: { email: user.email, role: user.role } });
-    } else {
-        res.status(401).json({ success: false, message: "Credenciales inválidas" });
+    try {
+        const { email, password } = req.body;
+        const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
+        if (user) {
+            db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run(email, 'LOGIN', 'Inicio de sesión exitoso');
+            res.json({ success: true, user: { email: user.email, role: user.role } });
+        } else {
+            res.status(401).json({ success: false, message: "Credenciales inválidas" });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
     }
 });
 
@@ -362,9 +380,13 @@ app.post("/api/submit-dynamic", async (req, res) => {
 });
 
 app.post("/api/system/fix", (req, res) => {
-    const { issueId } = req.body;
-    db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run('System', 'FIX', `Intento de corrección para issue ${issueId}`);
-    res.json({ success: true });
+    try {
+        const { issueId } = req.body;
+        db.prepare("INSERT INTO audit_logs (user_email, action, details) VALUES (?, ?, ?)").run('System', 'FIX', `Intento de corrección para issue ${issueId}`);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
 });
 
 app.post("/api/preview", async (req, res) => {
@@ -375,6 +397,14 @@ app.post("/api/preview", async (req, res) => {
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// Global error handler: catches anything thrown/forwarded by route handlers so
+// errors are logged and returned as JSON instead of being silently dropped.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Unhandled API error:', err);
+    if (res.headersSent) return;
+    res.status(500).json({ success: false, error: err?.message || 'Error interno del servidor' });
 });
 
 export default app;

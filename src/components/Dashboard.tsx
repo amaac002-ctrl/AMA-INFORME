@@ -20,6 +20,7 @@ import {
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Tooltip as LeafletTooltip } from 'react-leaflet';
+import { fetchJson } from '../lib/api';
 
 const DefaultIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -86,12 +87,12 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [subsRes, tempsRes] = await Promise.all([
-        fetch('/api/submissions-dynamic'),
-        fetch('/api/templates')
+      const [subs, temps] = await Promise.all([
+        fetchJson<any[]>('/api/submissions-dynamic'),
+        fetchJson<any[]>('/api/templates')
       ]);
-      setSubmissions(await subsRes.json());
-      setTemplates(await tempsRes.json());
+      setSubmissions(Array.isArray(subs) ? subs : []);
+      setTemplates(Array.isArray(temps) ? temps : []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -102,10 +103,11 @@ export default function Dashboard() {
   const handleDelete = async (id: number) => {
     if (!confirm('¿Eliminar este informe? Esta acción no se puede deshacer.')) return;
     try {
-      const res = await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
-      if (res.ok) setSubmissions(submissions.filter(s => s.id !== id));
+      await fetchJson(`/api/submissions/${id}`, { method: 'DELETE' });
+      setSubmissions(submissions.filter(s => s.id !== id));
     } catch (error) {
       console.error('Error deleting submission:', error);
+      alert('Error al eliminar el informe.');
     }
   };
 
