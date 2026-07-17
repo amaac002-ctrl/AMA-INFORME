@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import mammoth from 'mammoth';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { downloadPdfFromElement, getPdfContentElement } from '../lib/pdf';
+import { getJSON, postJSON, sendJSON, deleteJSON } from '../lib/api';
 import {
   Plus,
   Upload,
@@ -67,28 +67,20 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('/api/audit');
-      const data = await res.json();
-      setAuditLogs(data);
+      setAuditLogs(await getJSON('/api/audit'));
     } catch (e) { }
   };
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
-      const data = await res.json();
-      setUsersList(data);
+      setUsersList(await getJSON('/api/users'));
     } catch (e) { }
   };
 
   const handleCreateUser = async () => {
     if (!newUser.email || !newUser.password) return alert('Email y contraseña obligatorios');
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser)
-      });
+      const res = await postJSON('/api/users', newUser);
       if (res.ok) {
         setNewUser({ email: '', password: '', role: 'agente' });
         fetchUsers();
@@ -99,16 +91,14 @@ export default function Admin({ user }: AdminProps) {
   const handleDeleteUser = async (id: number) => {
     if (!confirm('¿Eliminar este usuario?')) return;
     try {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      await deleteJSON(`/api/users/${id}`);
       fetchUsers();
     } catch (e) { }
   };
 
   const fetchAllSubmissions = async () => {
     try {
-      const res = await fetch('/api/submissions-dynamic');
-      const data = await res.json();
-      setAllSubmissions(data);
+      setAllSubmissions(await getJSON('/api/submissions-dynamic'));
     } catch (e) { }
   };
 
@@ -119,11 +109,7 @@ export default function Admin({ user }: AdminProps) {
     if (!password) return;
 
     try {
-      const res = await fetch('/api/submissions', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
+      const res = await deleteJSON('/api/submissions', { password });
 
       if (res.ok) {
         setAllSubmissions([]);
@@ -141,7 +127,7 @@ export default function Admin({ user }: AdminProps) {
   const handleDeleteSubmission = async (id: number) => {
     if (!window.confirm('¿Estás seguro de que deseas eliminar este informe permanentemente?')) return;
     try {
-      const res = await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+      const res = await deleteJSON(`/api/submissions/${id}`);
       if (res.ok) {
         setAllSubmissions(prev => prev.filter(s => s.id !== id));
       } else {
@@ -158,27 +144,12 @@ export default function Admin({ user }: AdminProps) {
     if (!reportRef.current) return;
     setIsGeneratingPDF(true);
     try {
-      const element = reportRef.current.querySelector('.pdf-content') as HTMLElement;
-      if (!element) throw new Error('Content element not found');
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Informe_${selectedReport.template_name}_${selectedReport.expedient_number || 'S-N'}.pdf`);
+      const element = getPdfContentElement(reportRef.current);
+      await downloadPdfFromElement(
+        element,
+        `Informe_${selectedReport.template_name}_${selectedReport.expedient_number || 'S-N'}.pdf`,
+        { windowWidth: element.scrollWidth, windowHeight: element.scrollHeight }
+      );
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error al generar el PDF');
@@ -189,27 +160,19 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchSystemHealth = async () => {
     try {
-      const res = await fetch('/api/system/health');
-      const data = await res.json();
-      setSystemHealth(data);
+      setSystemHealth(await getJSON('/api/system/health'));
     } catch (e) { }
   };
 
   const fetchErrorLogs = async () => {
     try {
-      const res = await fetch('/api/error-logs');
-      const data = await res.json();
-      setErrorLogs(data);
+      setErrorLogs(await getJSON('/api/error-logs'));
     } catch (e) { }
   };
 
   const handleFixIssue = async (issueId: string) => {
     try {
-      const res = await fetch('/api/system/fix', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issueId })
-      });
+      const res = await postJSON('/api/system/fix', { issueId });
       if (res.ok) {
         alert("Problema corregido.");
         fetchSystemHealth();
@@ -219,9 +182,7 @@ export default function Admin({ user }: AdminProps) {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
-      const data = await response.json();
-      setTemplates(data);
+      setTemplates(await getJSON('/api/templates'));
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
@@ -281,11 +242,7 @@ export default function Admin({ user }: AdminProps) {
 
       console.log(`Saving template via ${method} to ${url}`, newTemplate);
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTemplate),
-      });
+      const response = await sendJSON(url, method, newTemplate);
 
       const data = await response.json();
       console.log("Save response:", data);
@@ -308,8 +265,7 @@ export default function Admin({ user }: AdminProps) {
   const handleEditTemplate = async (template: any) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/templates/${template.id}/config`);
-      const config = await res.json();
+      const config = await getJSON<any[]>(`/api/templates/${template.id}/config`);
 
       setNewTemplate({
         name: template.name,
@@ -338,11 +294,7 @@ export default function Admin({ user }: AdminProps) {
     if (!password) return;
 
     try {
-      const response = await fetch(`/api/templates/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
+      const response = await deleteJSON(`/api/templates/${id}`, { password });
 
       const data = await response.json();
       if (data.success) {

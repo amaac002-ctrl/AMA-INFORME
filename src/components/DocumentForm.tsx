@@ -33,8 +33,8 @@ import { improveText, askAi, analyzeImage } from '../services/geminiService';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import SignatureCanvas from 'react-signature-canvas';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { downloadPdfFromElement, getPdfContentElement, renderElementToCanvas } from '../lib/pdf';
+import { getJSON, postJSON } from '../lib/api';
 import { PROTECTED_SPACES_GEOJSON } from '../constants/geoData';
 import EmailComposeModal from './EmailComposeModal';
 
@@ -70,17 +70,8 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
   const generatePDFBase64 = async (): Promise<string | null> => {
     if (!previewRef.current) return null;
     try {
-      const element = previewRef.current.querySelector('.pdf-content') as HTMLElement;
-      if (!element) throw new Error('Content element not found');
-      await new Promise(resolve => setTimeout(resolve, 800)); // More time for images
-
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-
+      const element = getPdfContentElement(previewRef.current);
+      const canvas = await renderElementToCanvas(element, { delayMs: 800 }); // More time for images
       return canvas.toDataURL('application/pdf');
     } catch (error) {
       console.error('Error generating PDF Base64:', error);
@@ -92,21 +83,8 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
     if (!previewRef.current) return;
     setIsGeneratingPDF(true);
     try {
-      const element = previewRef.current.querySelector('.pdf-content') as HTMLElement;
-      if (!element) throw new Error('Content element not found');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Informe_${template.name}_${new Date().getTime()}.pdf`);
+      const element = getPdfContentElement(previewRef.current);
+      await downloadPdfFromElement(element, `Informe_${template.name}_${new Date().getTime()}.pdf`);
     } catch (error) {
       alert('Error al generar el PDF');
     } finally {
@@ -118,11 +96,7 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
     setIsDownloadingWord(true);
     try {
       const payload = { ...formData, template_id: template.id, photos };
-      const res = await fetch('/api/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await postJSON('/api/preview', payload);
       if (!res.ok) throw new Error('Error del servidor');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -202,8 +176,7 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`/api/templates/${template.id}/config`);
-      const data = await res.json();
+      const data = await getJSON<any[]>(`/api/templates/${template.id}/config`);
       setFields(data);
 
       // Initialize formData if empty
@@ -389,11 +362,7 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
         modulo: template.name.toLowerCase(),
         status: 'borrador'
       };
-      const res = await fetch('/api/submit-dynamic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submission)
-      });
+      const res = await postJSON('/api/submit-dynamic', submission);
       if (res.ok) {
         alert("Borrador guardado correctamente.");
       }
@@ -443,11 +412,7 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
         pdf_base64
       };
 
-      const response = await fetch('/api/submit-dynamic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submission),
-      });
+      const response = await postJSON('/api/submit-dynamic', submission);
 
       if (response.ok) {
         setSuccess(true);
@@ -481,11 +446,7 @@ export default function DocumentForm({ template, user, onBack }: DocumentFormPro
     };
 
     try {
-      const res = await fetch('/api/submit-dynamic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submission)
-      });
+      const res = await postJSON('/api/submit-dynamic', submission);
       if (res.ok) {
         setSuccess(true);
         localStorage.removeItem(`draft_${template.id}`);

@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { downloadPdfFromElement, getPdfContentElement } from '../lib/pdf';
+import { getJSON, deleteJSON } from '../lib/api';
 import {
   LayoutDashboard, Filter, Download, Search, FileText, Calendar,
   Map as MapIcon, BarChart3, TrendingUp, Users, ChevronRight,
@@ -86,12 +86,12 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [subsRes, tempsRes] = await Promise.all([
-        fetch('/api/submissions-dynamic'),
-        fetch('/api/templates')
+      const [subs, temps] = await Promise.all([
+        getJSON('/api/submissions-dynamic'),
+        getJSON('/api/templates')
       ]);
-      setSubmissions(await subsRes.json());
-      setTemplates(await tempsRes.json());
+      setSubmissions(subs);
+      setTemplates(temps);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -102,7 +102,7 @@ export default function Dashboard() {
   const handleDelete = async (id: number) => {
     if (!confirm('¿Eliminar este informe? Esta acción no se puede deshacer.')) return;
     try {
-      const res = await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+      const res = await deleteJSON(`/api/submissions/${id}`);
       if (res.ok) setSubmissions(submissions.filter(s => s.id !== id));
     } catch (error) {
       console.error('Error deleting submission:', error);
@@ -113,16 +113,8 @@ export default function Dashboard() {
     if (!reportRef.current) return;
     setIsGeneratingPDF(true);
     try {
-      const element = reportRef.current.querySelector('.pdf-content') as HTMLElement;
-      if (!element) throw new Error('Content element not found');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Informe_${selectedReport.template_name}_${selectedReport.expedient_number || 'S-N'}.pdf`);
+      const element = getPdfContentElement(reportRef.current);
+      await downloadPdfFromElement(element, `Informe_${selectedReport.template_name}_${selectedReport.expedient_number || 'S-N'}.pdf`);
     } catch (error) {
       alert('Error al generar el PDF');
     } finally {

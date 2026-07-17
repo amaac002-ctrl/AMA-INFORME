@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { postJSON } from '../lib/api';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -18,11 +19,7 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const response = await postJSON('/api/login', { email, password });
 
       const data = await response.json();
       if (!response.ok) {
